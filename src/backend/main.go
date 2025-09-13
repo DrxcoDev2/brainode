@@ -6,33 +6,31 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"strconv"
 	"os"
+	"strconv"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/gorilla/mux"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
 )
 
 // User representa un usuario
 type User struct {
-	ID    int    `json:"id"`
-	Name  string `json:"name"`
-	Email string `json:"email"`
+	ID       int    `json:"id"`
+	Name     string `json:"name"`
+	Email    string `json:"email"`
+	Password string `json:"password,omitempty"` // omitimos en JSON de GET
 }
 
 var dbpool *pgxpool.Pool
 
 func main() {
-
 	err := godotenv.Load("../../.env")
 	if err != nil {
 		log.Fatalf("Error al cargar .env: %v", err)
 	}
 
 	dsn := os.Getenv("DB_DSN")
-
-	
 	dbpool, err = pgxpool.New(context.Background(), dsn)
 	if err != nil {
 		log.Fatalf("Error al conectar a la DB: %v", err)
@@ -40,12 +38,10 @@ func main() {
 	defer dbpool.Close()
 
 	fmt.Println("Conectado a la base de datos")
-
 	createTable(dbpool)
 
 	// Router con Gorilla Mux
 	r := mux.NewRouter()
-
 	r.HandleFunc("/users", getUsersHandler).Methods("GET")
 	r.HandleFunc("/users", createUserHandler).Methods("POST")
 	r.HandleFunc("/users/{id}", updateUserHandler).Methods("PUT")
@@ -61,7 +57,8 @@ func createTable(db *pgxpool.Pool) {
 		CREATE TABLE IF NOT EXISTS users (
 			id SERIAL PRIMARY KEY,
 			name TEXT NOT NULL,
-			email TEXT UNIQUE NOT NULL
+			email TEXT UNIQUE NOT NULL,
+			password TEXT NOT NULL
 		)
 	`)
 	if err != nil {
@@ -72,7 +69,7 @@ func createTable(db *pgxpool.Pool) {
 
 // GET /users
 func getUsersHandler(w http.ResponseWriter, r *http.Request) {
-	rows, err := dbpool.Query(context.Background(), "SELECT id, name, email FROM users")
+	rows, err := dbpool.Query(context.Background(), "SELECT id, name, email FROM users") // no traemos password
 	if err != nil {
 		http.Error(w, "Error leyendo usuarios", http.StatusInternalServerError)
 		return
@@ -82,7 +79,10 @@ func getUsersHandler(w http.ResponseWriter, r *http.Request) {
 	var users []User
 	for rows.Next() {
 		var u User
-		rows.Scan(&u.ID, &u.Name, &u.Email)
+		if err := rows.Scan(&u.ID, &u.Name, &u.Email); err != nil {
+			http.Error(w, "Error leyendo usuarios", http.StatusInternalServerError)
+			return
+		}
 		users = append(users, u)
 	}
 
@@ -92,57 +92,70 @@ func getUsersHandler(w http.ResponseWriter, r *http.Request) {
 
 // POST /users
 func createUserHandler(w http.ResponseWriter, r *http.Request) {
+	defer r.Body.Close()
+
 	var u User
-	err := json.NewDecoder(r.Body).Decode(&u)
-	if err != nil {
-		http.Error(w, "Datos inválidos", http.StatusBadRequest)
+	if err := json.NewDecoder(r.Body).Decode(&u); err != nil {
+		http.Error(w, "Datos inv�lidos", http.StatusBadRequest)
 		return
 	}
 
-	_, err = dbpool.Exec(context.Background(),
-		"INSERT INTO users (name, email) VALUES ($1, $2)", u.Name, u.Email)
+	_, err := dbpool.Exec(context.Background(),
+		"INSERT INTO users (name, email, password) VALUES ($1, $2, $3)", u.Name, u.Email, u.Password)
 	if err != nil {
 		http.Error(w, "Error insertando usuario", http.StatusInternalServerError)
 		return
 	}
 
+	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	fmt.Fprintf(w, "Usuario creado")
+	json.NewEncoder(w).Encode(map[string]string{"message": "Usuario creado"})
 }
 
 // PUT /users/{id}
 func updateUserHandler(w http.ResponseWriter, r *http.Request) {
+	defer r.Body.Close()
+
 	idStr := mux.Vars(r)["id"]
-	id, _ := strconv.Atoi(idStr)
+	id, err := strconv.Atoi(idStr)
+	if err != nil {
+		http.Error(w, "ID inv�lido", http.StatusBadRequest)
+		return
+	}
 
 	var u User
-	err := json.NewDecoder(r.Body).Decode(&u)
-	if err != nil {
-		http.Error(w, "Datos inválidos", http.StatusBadRequest)
+	if err := json.NewDecoder(r.Body).Decode(&u); err != nil {
+		http.Error(w, "Datos inv�lidos", http.StatusBadRequest)
 		return
 	}
 
 	_, err = dbpool.Exec(context.Background(),
-		"UPDATE users SET name=$1, email=$2 WHERE id=$3", u.Name, u.Email, id)
+		"UPDATE users SET name=$1, email=$2, password=$3 WHERE id=$4", u.Name, u.Email, u.Password, id)
 	if err != nil {
 		http.Error(w, "Error actualizando usuario", http.StatusInternalServerError)
 		return
 	}
 
-	fmt.Fprintf(w, "Usuario actualizado")
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"message": "Usuario actualizado"})
 }
 
 // DELETE /users/{id}
 func deleteUserHandler(w http.ResponseWriter, r *http.Request) {
 	idStr := mux.Vars(r)["id"]
-	id, _ := strconv.Atoi(idStr)
+	id, err := strconv.Atoi(idStr)
+	if err != nil {
+		http.Error(w, "ID inv�lido", http.StatusBadRequest)
+		return
+	}
 
-	_, err := dbpool.Exec(context.Background(),
+	_, err = dbpool.Exec(context.Background(),
 		"DELETE FROM users WHERE id=$1", id)
 	if err != nil {
 		http.Error(w, "Error borrando usuario", http.StatusInternalServerError)
 		return
 	}
 
-	fmt.Fprintf(w, "Usuario eliminado")
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"message": "Usuario eliminado"})
 }

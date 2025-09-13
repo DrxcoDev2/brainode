@@ -26,7 +26,7 @@ import {
     PromptInputToolbar,
     PromptInputTools,
     usePromptInputAttachments,
-  } from '@/components/ai-elements/prompt-input';
+} from '@/components/ai-elements/prompt-input';
 
 type ChatMessage = {
     id: string;
@@ -62,12 +62,26 @@ export default function ExChat() {
     const [isLoading, setIsLoading] = useState(false);
 
     return (
-        <div className="h-auto max-h-[calc(100vh-100px)] border border-gray-200 dark:border-gray-800 items-center w-full bg-gray-50 rounded-xl p-16 -pb-16 my-16 dark:bg-black">
-            <Conversation className="relative w-full" style={{ height: '500px' }}>
+        <div className="h-auto max-h-[calc(100vh-100px)] w-full max-w-6xl lg:max-w-5xl md:max-w-4xl sm:max-w-full border border-neutral-200 dark:border-neutral-800 flex flex-col bg-neutral-50 rounded-xl my-8 px-2 dark:bg-black">
+            {/* Header */}
+            <div className="h-12 border-b p-4 flex items-center justify-between">
+                <h1 className="text-base sm:text-lg md:text-xl font-bold">Brainode</h1>
+                <div className="flex space-x-2">
+                    <div className="rounded-full bg-red-400 w-3 h-3 sm:w-4 sm:h-4"></div>
+                    <div className="rounded-full bg-yellow-400 w-3 h-3 sm:w-4 sm:h-4"></div>
+                    <div className="rounded-full bg-green-400 w-3 h-3 sm:w-4 sm:h-4"></div>
+                </div>
+            </div>
+
+            {/* Conversation */}
+            <Conversation
+                className="relative flex-1 w-full p-4 sm:p-6 md:p-10 lg:p-16 overflow-hidden"
+                style={{ minHeight: "300px" }}
+            >
                 <ConversationContent>
                     {messages.length === 0 ? (
                         <ConversationEmptyState
-                            icon={<MessageSquare className="size-12" />}
+                            icon={<MessageSquare className="size-10 sm:size-12" />}
                             title="No messages yet"
                             description="Start a conversation to see messages here"
                         />
@@ -81,14 +95,17 @@ export default function ExChat() {
                 </ConversationContent>
                 <ConversationScrollButton />
             </Conversation>
-            <PromptInput onSubmit={() => { }} className="mt-4 relative">
+
+            {/* Prompt input */}
+            <PromptInput
+                onSubmit={() => { }}
+                className="mt-4 relative w-full max-w-xl mx-auto mb-6 sm:mb-10"
+            >
                 <PromptInputBody>
                     <PromptInputAttachments>
-                        {(attachment) => (
-                            <PromptInputAttachment data={attachment} />
-                        )}
+                        {(attachment) => <PromptInputAttachment data={attachment} />}
                     </PromptInputAttachments>
-                    <PromptInputTextarea onChange={(e) => { }} value={''} />
+                    <PromptInputTextarea onChange={(e) => { }} value={""} />
                 </PromptInputBody>
                 <PromptInputToolbar>
                     <PromptInputTools>
@@ -99,12 +116,10 @@ export default function ExChat() {
                             </PromptInputActionMenuContent>
                         </PromptInputActionMenu>
                     </PromptInputTools>
-                    <PromptInputSubmit
-                        disabled={false}
-                        status={'ready'}
-                    />
+                    <PromptInputSubmit disabled={false} status={"ready"} />
                 </PromptInputToolbar>
             </PromptInput>
         </div>
+
     );
 }
