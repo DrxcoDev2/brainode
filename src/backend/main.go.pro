@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"strconv"
@@ -19,33 +20,43 @@ type User struct {
 	ID       int    `json:"id"`
 	Name     string `json:"name"`
 	Email    string `json:"email"`
-	Password string `json:"password,omitempty"` // omitimos en JSON de GET
+	Password string `json:"password,omitempty"`
 }
 
 var dbpool *pgxpool.Pool
 
 func main() {
-	// Cargar variables de entorno
-	err := godotenv.Load("../../.env")
-	if err != nil {
-		log.Fatalf("Error al cargar .env: %v", err)
-	}
+	// Cargar variables de entorno localmente
+	_ = godotenv.Load("../../.env")
 
 	dsn := os.Getenv("DB_DSN")
-	dbpool, err = pgxpool.New(context.Background(), dsn)
-	if err != nil {
-		log.Fatalf("Error al conectar a la DB: %v", err)
+	if dsn == "" {
+		log.Fatal("DB_DSN no está definido")
 	}
+
+	// Configuración pgx con soporte SSL y IPv4
+	config, err := pgxpool.ParseConfig(dsn)
+	if err != nil {
+		log.Fatalf("Error parseando DSN: %v", err)
+	}
+
+	// Forzar IPv4
+	config.ConnConfig.DialFunc = func(ctx context.Context, network, addr string) (net.Conn, error) {
+		return (&net.Dialer{}).DialContext(ctx, "tcp4", addr)
+	}
+
+	dbpool, err = pgxpool.NewWithConfig(context.Background(), config)
+	if err != nil {
+		log.Fatalf("Error conectando a la DB: %v", err)
+	}
+
 	defer dbpool.Close()
 
 	fmt.Println("Conectado a la base de datos")
 	createTable(dbpool)
 
-	// Router con Gorilla Mux
 	r := mux.NewRouter()
-
-	// Middleware CORS
-	r.Use(middlewareCORS)
+	r.Use(middlewareCORS) // CORS para frontend
 
 	// Rutas
 	r.HandleFunc("/users", getUsersHandler).Methods("GET", "OPTIONS")
@@ -58,10 +69,9 @@ func main() {
 	log.Fatal(http.ListenAndServe(":2000", r))
 }
 
+// Login handler
 func loginHandler(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
-
-
 	w.Header().Set("Content-Type", "application/json")
 
 	var creds struct {
@@ -74,24 +84,16 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Buscar usuario por email
 	var user User
 	err := dbpool.QueryRow(context.Background(),
 		"SELECT id, name, email, password FROM users WHERE email=$1", creds.Email).
 		Scan(&user.ID, &user.Name, &user.Email, &user.Password)
 
-	if err != nil {
-		http.Error(w, "Email o contrase�a incorrectos", http.StatusUnauthorized)
+	if err != nil || creds.Password != user.Password {
+		http.Error(w, "Email o contraseña incorrectos", http.StatusUnauthorized)
 		return
 	}
 
-	// Comprobar contrase�a
-	if creds.Password != user.Password {
-		http.Error(w, "Email o contrase�a incorrectos", http.StatusUnauthorized)
-		return
-	}
-
-	// Login correcto
 	json.NewEncoder(w).Encode(map[string]string{
 		"message": "Login exitoso",
 		"name":    user.Name,
@@ -99,15 +101,13 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-
+// Middleware CORS
 func middlewareCORS(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Permitir tu frontend
-		w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
+		w.Header().Set("Access-Control-Allow-Origin", "*") // Ajustar en producción
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
 
-		// Responder preflight
 		if r.Method == "OPTIONS" {
 			w.WriteHeader(http.StatusOK)
 			return
@@ -120,20 +120,19 @@ func middlewareCORS(next http.Handler) http.Handler {
 // Crear tabla si no existe
 func createTable(db *pgxpool.Pool) {
 	_, err := db.Exec(context.Background(), `
-		CREATE TABLE IF NOT EXISTS users (
-			id SERIAL PRIMARY KEY,
-			name TEXT NOT NULL,
-			email TEXT UNIQUE NOT NULL,
-			password TEXT NOT NULL
-		)
-	`)
+	CREATE TABLE IF NOT EXISTS users (
+		id SERIAL PRIMARY KEY,
+		name TEXT NOT NULL,
+		email TEXT UNIQUE NOT NULL,
+		password TEXT NOT NULL
+	)`)
 	if err != nil {
 		log.Fatalf("Error creando tabla: %v", err)
 	}
 	fmt.Println("Tabla 'users' lista")
 }
 
-// GET /users
+// CRUD Handlers
 func getUsersHandler(w http.ResponseWriter, r *http.Request) {
 	rows, err := dbpool.Query(context.Background(), "SELECT id, name, email FROM users")
 	if err != nil {
@@ -156,13 +155,11 @@ func getUsersHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(users)
 }
 
-// POST /users
 func createUserHandler(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
-
 	var u User
 	if err := json.NewDecoder(r.Body).Decode(&u); err != nil {
-		http.Error(w, "Datos inv�lidos", http.StatusBadRequest)
+		http.Error(w, "Datos inválidos", http.StatusBadRequest)
 		return
 	}
 
@@ -178,20 +175,18 @@ func createUserHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]string{"message": "Usuario creado"})
 }
 
-// PUT /users/{id}
 func updateUserHandler(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
-
 	idStr := mux.Vars(r)["id"]
 	id, err := strconv.Atoi(idStr)
 	if err != nil {
-		http.Error(w, "ID inv�lido", http.StatusBadRequest)
+		http.Error(w, "ID inválido", http.StatusBadRequest)
 		return
 	}
 
 	var u User
 	if err := json.NewDecoder(r.Body).Decode(&u); err != nil {
-		http.Error(w, "Datos inv�lidos", http.StatusBadRequest)
+		http.Error(w, "Datos inválidos", http.StatusBadRequest)
 		return
 	}
 
@@ -206,17 +201,15 @@ func updateUserHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]string{"message": "Usuario actualizado"})
 }
 
-// DELETE /users/{id}
 func deleteUserHandler(w http.ResponseWriter, r *http.Request) {
 	idStr := mux.Vars(r)["id"]
 	id, err := strconv.Atoi(idStr)
 	if err != nil {
-		http.Error(w, "ID inv�lido", http.StatusBadRequest)
+		http.Error(w, "ID inválido", http.StatusBadRequest)
 		return
 	}
 
-	_, err = dbpool.Exec(context.Background(),
-		"DELETE FROM users WHERE id=$1", id)
+	_, err = dbpool.Exec(context.Background(), "DELETE FROM users WHERE id=$1", id)
 	if err != nil {
 		http.Error(w, "Error borrando usuario", http.StatusInternalServerError)
 		return
