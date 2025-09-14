@@ -7,6 +7,7 @@ import Form from "@/components/form";
 import { useEffect, useState } from "react";
 import { LoaderOne } from "@/components/ui/loader";
 import ExChat from "@/components/ex-chat";
+import ModInfo from "@/components/mod-info";
 
 export default function Home() {
 
@@ -22,13 +23,20 @@ export default function Home() {
     isLoading ? (
       <div className="flex items-center justify-center h-screen"><LoaderOne></LoaderOne></div>
     ) : (
-    <div className="font-sans flex items-center justify-center ">
-      <main className="">
+    <div className="font-sans ">
+      <main className="flex items-center justify-center ">
+        <div className="flex flex-col">
         <Header></Header>
         <BackgroundRippleEffectDemo></BackgroundRippleEffectDemo>
         <Form></Form>
-        <ExChat></ExChat>
+        </div>
+        
+        
       </main>
+      <div className="mx-2 my-16 space-y-16 grid grid-cols-1 lg:grid-cols-2 lg:mx-120 lg:my-24">
+        <ExChat></ExChat>
+        <ModInfo></ModInfo>
+      </div>
 
     </div>
     )

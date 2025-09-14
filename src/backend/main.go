@@ -25,6 +25,7 @@ type User struct {
 var dbpool *pgxpool.Pool
 
 func main() {
+	// Cargar variables de entorno
 	err := godotenv.Load("../../.env")
 	if err != nil {
 		log.Fatalf("Error al cargar .env: %v", err)
@@ -42,13 +43,78 @@ func main() {
 
 	// Router con Gorilla Mux
 	r := mux.NewRouter()
-	r.HandleFunc("/users", getUsersHandler).Methods("GET")
-	r.HandleFunc("/users", createUserHandler).Methods("POST")
-	r.HandleFunc("/users/{id}", updateUserHandler).Methods("PUT")
-	r.HandleFunc("/users/{id}", deleteUserHandler).Methods("DELETE")
+
+	// Middleware CORS
+	r.Use(middlewareCORS)
+
+	// Rutas
+	r.HandleFunc("/users", getUsersHandler).Methods("GET", "OPTIONS")
+	r.HandleFunc("/users", createUserHandler).Methods("POST", "OPTIONS")
+	r.HandleFunc("/users/{id}", updateUserHandler).Methods("PUT", "OPTIONS")
+	r.HandleFunc("/users/{id}", deleteUserHandler).Methods("DELETE", "OPTIONS")
+	r.HandleFunc("/login", loginHandler).Methods("POST", "OPTIONS")
 
 	fmt.Println("Servidor escuchando en http://localhost:2000")
 	log.Fatal(http.ListenAndServe(":2000", r))
+}
+
+func loginHandler(w http.ResponseWriter, r *http.Request) {
+	defer r.Body.Close()
+
+
+	w.Header().Set("Content-Type", "application/json")
+
+	var creds struct {
+		Email    string `json:"email"`
+		Password string `json:"password"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&creds); err != nil {
+		http.Error(w, "Datos invalidos", http.StatusBadRequest)
+		return
+	}
+
+	// Buscar usuario por email
+	var user User
+	err := dbpool.QueryRow(context.Background(),
+		"SELECT id, name, email, password FROM users WHERE email=$1", creds.Email).
+		Scan(&user.ID, &user.Name, &user.Email, &user.Password)
+
+	if err != nil {
+		http.Error(w, "Email o contrase�a incorrectos", http.StatusUnauthorized)
+		return
+	}
+
+	// Comprobar contrase�a
+	if creds.Password != user.Password {
+		http.Error(w, "Email o contrase�a incorrectos", http.StatusUnauthorized)
+		return
+	}
+
+	// Login correcto
+	json.NewEncoder(w).Encode(map[string]string{
+		"message": "Login exitoso",
+		"name":    user.Name,
+		"email":   user.Email,
+	})
+}
+
+
+func middlewareCORS(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Permitir tu frontend
+		w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+
+		// Responder preflight
+		if r.Method == "OPTIONS" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+
+		next.ServeHTTP(w, r)
+	})
 }
 
 // Crear tabla si no existe
@@ -69,7 +135,7 @@ func createTable(db *pgxpool.Pool) {
 
 // GET /users
 func getUsersHandler(w http.ResponseWriter, r *http.Request) {
-	rows, err := dbpool.Query(context.Background(), "SELECT id, name, email FROM users") // no traemos password
+	rows, err := dbpool.Query(context.Background(), "SELECT id, name, email FROM users")
 	if err != nil {
 		http.Error(w, "Error leyendo usuarios", http.StatusInternalServerError)
 		return

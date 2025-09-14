@@ -10,11 +10,11 @@ export default async function Test() {
 
   // Si hay más de 1 usuario, mostramos notFound
   let found = false;
-  if (users.length > 1) {
+  if (users.length > 2) {
     globalNotFound();
-    found = true;
-  } else {
     found = false;
+  } else {
+    found = true;
   }
 
   return (

@@ -9,11 +9,48 @@ import {
   IconBrandOnlyfans,
 } from "@tabler/icons-react";
 import Link from "next/link";
+import { useState } from "react";
+import { useRouter } from "next/navigation";
 
 export default function Login() {
-  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+  const router = useRouter();
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+
+  
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    console.log("Login submitted");
+    console.log("Login submitted", email, password);
+
+    try {
+      const res = await fetch("http://localhost:2000/login", {
+        cache: "no-store",
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({email, password}),
+      });
+
+      if (!res.ok) {
+        const err = await res.text();
+        alert(err);
+      }
+
+      const data = await res.json();
+      console.log("Usuario logueado:", data);
+      if (data) {
+        router.push("/");
+      } else if (!data.name) {
+        alert("Usuario no encontrado");
+      } else if (!data.email) {
+        alert("Email no encontrado");
+      } else if (!data.password) {
+        alert("Contraseña no encontrada");
+      }
+    } catch (error) {
+      console.error("Error en el login:", error);
+    }
   };
   return (
     <div className="shadow-input mx-auto w-full max-w-md rounded-none flex flex-col items-center justify-center h-auto mt-20 bg-white p-4 md:rounded-2xl md:p-8 dark:bg-black">
@@ -29,11 +66,11 @@ export default function Login() {
             <div className="mb-4 flex flex-col space-y-2 md:flex-row md:space-y-0 md:space-x-2">
             <LabelInputContainer>
                 <Label htmlFor="email">Email Address</Label>
-                <Input id="email" placeholder="projectmayhem@fc.com" type="email" />
+                <Input id="email" placeholder="projectmayhem@fc.com" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
             </LabelInputContainer>
             <LabelInputContainer>
                 <Label htmlFor="password">Password</Label>
-                <Input id="password" placeholder="••••••••" type="password" />
+                <Input id="password" placeholder="••••••••" type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
             </LabelInputContainer>
             </div>
 
@@ -71,7 +108,7 @@ export default function Login() {
             
             </div>
             <div className="mt-5 text-center">
-            <p className="text-sm">Don&apos;t have an account? <Link href="/" className="text-blue-500">Create one</Link></p>
+            <p className="text-sm">Don&apos;t have an account? <Link href="/#signup" className="text-blue-500">Create one</Link></p>
             </div>
         </form>
         </div>

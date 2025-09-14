@@ -62,7 +62,7 @@ export default function ExChat() {
     const [isLoading, setIsLoading] = useState(false);
 
     return (
-        <div className="h-auto max-h-[calc(100vh-100px)] w-full max-w-6xl lg:max-w-5xl md:max-w-4xl sm:max-w-full border border-neutral-200 dark:border-neutral-800 flex flex-col bg-neutral-50 rounded-xl my-8 px-2 dark:bg-black">
+        <div className="h-auto max-h-[calc(100vh-100px)] w-full max-w-6xl  md:max-w-4xl sm:max-w-full border border-neutral-200 dark:border-neutral-800 flex flex-col bg-neutral-50 rounded-xl my-8 px-2 dark:bg-black">
             {/* Header */}
             <div className="h-12 border-b p-4 flex items-center justify-between">
                 <h1 className="text-base sm:text-lg md:text-xl font-bold">Brainode</h1>
