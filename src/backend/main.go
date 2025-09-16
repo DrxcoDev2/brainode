@@ -40,11 +40,13 @@ func main() {
 	}
 
 	dsn := os.Getenv("DB_DSN")
-	dbpool, err = pgxpool.New(context.Background(), dsn)
+
+	dbpool, err := pgxpool.New(context.Background(), dsn)
 	if err != nil {
 		log.Fatalf("Error al conectar a la DB: %v", err)
 	}
 	defer dbpool.Close()
+
 
 	fmt.Println("Conectado a la base de datos")
 	createTable(dbpool)
