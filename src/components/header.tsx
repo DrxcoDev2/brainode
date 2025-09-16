@@ -2,7 +2,6 @@
 import Link from "next/link";
 import { ModeToggle } from "./ui/mode-toggle";
 import { routes } from "../app/routes";
-import { useEffect, useState } from "react";
 import { useUser } from "@/context/UserContext";
 import {
     DropdownMenu,

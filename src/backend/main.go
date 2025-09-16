@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"time"
 
 	"github.com/gorilla/mux"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -20,6 +21,13 @@ type User struct {
 	Name     string `json:"name"`
 	Email    string `json:"email"`
 	Password string `json:"password,omitempty"` // omitimos en JSON de GET
+}
+
+type Conversation struct {
+    ID        int       `json:"id"`
+    UserID    int       `json:"user_id"`
+    Model     string    `json:"model"`
+    CreatedAt time.Time `json:"created_at"`
 }
 
 var dbpool *pgxpool.Pool
@@ -40,6 +48,7 @@ func main() {
 
 	fmt.Println("Conectado a la base de datos")
 	createTable(dbpool)
+	createTableConversations(dbpool)
 
 	// Router con Gorilla Mux
 	r := mux.NewRouter()
@@ -53,6 +62,10 @@ func main() {
 	r.HandleFunc("/users/{id}", updateUserHandler).Methods("PUT", "OPTIONS")
 	r.HandleFunc("/users/{id}", deleteUserHandler).Methods("DELETE", "OPTIONS")
 	r.HandleFunc("/login", loginHandler).Methods("POST", "OPTIONS")
+	r.HandleFunc("/conversations", getConversationsHandler).Methods("GET", "OPTIONS")
+	//r.HandleFunc("/conversations", createConversationHandler).Methods("POST", "OPTIONS")
+	//r.HandleFunc("/conversations/{id}", updateConversationHandler).Methods("PUT", "OPTIONS")
+	//r.HandleFunc("/conversations/{id}", deleteConversationHandler).Methods("DELETE", "OPTIONS")
 
 	fmt.Println("Servidor escuchando en http://localhost:2000")
 	log.Fatal(http.ListenAndServe(":2000", r))
@@ -103,7 +116,7 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 func middlewareCORS(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Permitir tu frontend
-		w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
+		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
 
@@ -131,6 +144,23 @@ func createTable(db *pgxpool.Pool) {
 		log.Fatalf("Error creando tabla: %v", err)
 	}
 	fmt.Println("Tabla 'users' lista")
+}
+
+//Crear tabla de conversaciones si no existe
+func createTableConversations(db *pgxpool.Pool) {
+	_, err := db.Exec(context.Background(), `
+		CREATE TABLE IF NOT EXISTS conversations (
+			id SERIAL PRIMARY KEY,
+			user_id INT NOT NULL,
+			model TEXT NOT NULL,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			FOREIGN KEY (user_id) REFERENCES users(id)
+		)
+	`)
+	if err != nil {
+		log.Fatalf("Error creando tabla: %v", err)
+	}
+	fmt.Println("Tabla 'conversations' lista")
 }
 
 // GET /users
@@ -225,3 +255,28 @@ func deleteUserHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"message": "Usuario eliminado"})
 }
+
+// GET /conversations
+func getConversationsHandler(w http.ResponseWriter, r *http.Request) {
+	rows, err := dbpool.Query(context.Background(), "SELECT id, user_id, model, created_at FROM conversations")
+	if err != nil {
+		http.Error(w, "Error leyendo usuarios", http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	var conversations []Conversation
+	for rows.Next() {
+		var u Conversation
+		if err := rows.Scan(&u.ID, &u.UserID, &u.Model, &u.CreatedAt); err != nil {
+			http.Error(w, "Error leyendo usuarios", http.StatusInternalServerError)
+			return
+		}
+		conversations = append(conversations, u)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(conversations)
+
+}
+	 

@@ -10,14 +10,14 @@ import { useUser } from "@/context/UserContext";
 
 export default function Login() {
   const router = useRouter();
-  const { setEmail } = useUser(); 
+  const { setUser } = useUser(); 
   const [email, setLocalEmail] = useState("");
   const [password, setPassword] = useState("");
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     console.log("Login submitted", email, password);
-
+  
     try {
       const res = await fetch("http://localhost:2000/login", {
         cache: "no-store",
@@ -25,21 +25,28 @@ export default function Login() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
       });
-
+  
+      if (!res.ok) {
+        throw new Error("Error en el login");
+      }
+  
       const data = await res.json();
       console.log("Respuesta de login:", data);
-
-      // Ajuste: revisamos si viene email directamente
-      const emailFromApi = data.user?.email || data.email;
+  
+      // Aquí tomamos directamente los campos que devuelve Go
+      const emailFromApi = data.email;
+      const nameFromApi = data.name;
+  
       if (!emailFromApi) {
         alert("Email no encontrado en la respuesta del servidor");
         return;
       }
-
+  
       // Guardamos en contexto y localStorage
-      setEmail(emailFromApi);
+      setUser(emailFromApi, nameFromApi);
       localStorage.setItem("userEmail", emailFromApi);
-
+      localStorage.setItem("userName", nameFromApi);
+  
       // Redirigir a home
       router.push("/");
     } catch (error: any) {
