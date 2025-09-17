@@ -2,10 +2,13 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"strconv"
 	"time"
@@ -34,19 +37,77 @@ var dbpool *pgxpool.Pool
 
 func main() {
 	// Cargar variables de entorno
-	err := godotenv.Load("../../.env")
+	err := godotenv.Load("./.env")
 	if err != nil {
 		log.Fatalf("Error al cargar .env: %v", err)
 	}
 
 	dsn := os.Getenv("DB_DSN")
+	if dsn == "" {
+		log.Fatal("DB_DSN no está configurado (revisa tu .env o variables de entorno)")
+	}
 
-	dbpool, err := pgxpool.New(context.Background(), dsn)
+	// Analizar DSN para extraer host/puerto (necesario para SNI y fallback a IP)
+	u, err := url.Parse(dsn)
 	if err != nil {
-		log.Fatalf("Error al conectar a la DB: %v", err)
+		log.Fatalf("DB_DSN inválido: %v", err)
+	}
+	host := u.Hostname()
+	port := u.Port()
+	if port == "" {
+		port = "5432"
+	}
+
+	// Permitir override por variable de entorno (evita depender del DNS del sistema)
+	forcedIPv4 := os.Getenv("DB_HOST_IPV4")
+	var resolvedIPv4 string
+	if forcedIPv4 != "" {
+		resolvedIPv4 = forcedIPv4
+		fmt.Printf("Usando DB_HOST_IPV4=%s\n", resolvedIPv4)
+	} else {
+		// Intentar resolver IPv4
+		resCtx, resCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer resCancel()
+		ips, err := net.DefaultResolver.LookupIP(resCtx, "ip4", host)
+		if err == nil && len(ips) > 0 {
+			resolvedIPv4 = ips[0].String()
+		} else if err != nil {
+			log.Printf("Aviso: no se pudo resolver IPv4 para %s: %v", host, err)
+		}
+	}
+
+	cfg, err := pgxpool.ParseConfig(dsn)
+	if err != nil {
+		log.Fatalf("Error parseando DB_DSN: %v", err)
+	}
+
+	// Asegurar SNI para el certificado de Supabase
+	if cfg.ConnConfig.TLSConfig == nil {
+		cfg.ConnConfig.TLSConfig = &tls.Config{}
+	}
+	cfg.ConnConfig.TLSConfig.ServerName = host
+
+	// Fuerza conexiones IPv4; si tenemos IPv4 resuelta/proporcionada, dial directo a esa IP
+	cfg.ConnConfig.DialFunc = func(ctx context.Context, network, addr string) (net.Conn, error) {
+		d := &net.Dialer{Timeout: 5 * time.Second}
+		if resolvedIPv4 != "" {
+			return d.DialContext(ctx, "tcp4", net.JoinHostPort(resolvedIPv4, port))
+		}
+		return d.DialContext(ctx, "tcp4", addr)
+	}
+
+	dbpool, err = pgxpool.NewWithConfig(context.Background(), cfg)
+	if err != nil {
+		log.Fatalf("Error creando pool de conexiones: %v", err)
 	}
 	defer dbpool.Close()
 
+	// Verificar la conexión antes de continuar
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := dbpool.Ping(ctx); err != nil {
+		log.Fatalf("No se pudo conectar a la DB: %v", err)
+	}
 
 	fmt.Println("Conectado a la base de datos")
 	createTable(dbpool)
@@ -281,4 +342,3 @@ func getConversationsHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(conversations)
 
 }
-	 
