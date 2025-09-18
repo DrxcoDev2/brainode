@@ -3,7 +3,6 @@ import React, { useState } from "react";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
-import { IconBrandGithub, IconBrandGoogle } from "@tabler/icons-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useUser } from "@/context/UserContext";
@@ -13,45 +12,47 @@ export default function Login() {
   const { setUser } = useUser(); 
   const [email, setLocalEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    console.log("Login submitted", email, password);
-  
+    setLoading(true);
+
     try {
-      const res = await fetch("http://localhost:2000/login", {
+      const res = await fetch("/api/login", {
         cache: "no-store",
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
       });
-  
-      if (!res.ok) {
-        throw new Error("Error en el login");
-      }
-  
+
       const data = await res.json();
-      console.log("Respuesta de login:", data);
-  
-      // Aquí tomamos directamente los campos que devuelve Go
+
+      if (!res.ok) {
+        throw new Error(data.message || "Error en el login");
+      }
+
+      // Datos devueltos por el API route
       const emailFromApi = data.email;
       const nameFromApi = data.name;
-  
+
       if (!emailFromApi) {
         alert("Email no encontrado en la respuesta del servidor");
         return;
       }
-  
+
       // Guardamos en contexto y localStorage
       setUser(emailFromApi, nameFromApi);
       localStorage.setItem("userEmail", emailFromApi);
       localStorage.setItem("userName", nameFromApi);
-  
+
       // Redirigir a home
       router.push("/");
     } catch (error: any) {
       console.error("Error en el login:", error);
       alert(error.message || "Error desconocido en login");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -70,6 +71,7 @@ export default function Login() {
               type="email"
               value={email}
               onChange={(e) => setLocalEmail(e.target.value)}
+              required
             />
           </LabelInputContainer>
           <LabelInputContainer>
@@ -80,6 +82,7 @@ export default function Login() {
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
+              required
             />
           </LabelInputContainer>
         </div>
@@ -87,8 +90,9 @@ export default function Login() {
         <button
           className="group/btn relative block h-10 w-full rounded-md bg-gradient-to-br from-black to-neutral-600 font-medium text-white shadow-[0px_1px_0px_0px_#ffffff40_inset,0px_-1px_0px_0px_#ffffff40_inset] dark:bg-zinc-800 dark:from-zinc-900 dark:to-zinc-900 dark:shadow-[0px_1px_0px_0px_#27272a_inset,0px_-1px_0px_0px_#27272a_inset]"
           type="submit"
+          disabled={loading}
         >
-          Login &rarr;
+          {loading ? "Ingresando..." : "Login \u2192"}
           <BottomGradient />
         </button>
       </form>
